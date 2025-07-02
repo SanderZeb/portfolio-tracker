@@ -137,7 +137,7 @@ export const loadPortfolioData = async (): Promise<{
   };
 };
 
-export const fetchMarketInfo = async (): Promise<MarketInfo> => {
+const fetchMarketInfo = async (): Promise<MarketInfo> => {
   await new Promise(resolve => setTimeout(resolve, 75));
 
   return {
