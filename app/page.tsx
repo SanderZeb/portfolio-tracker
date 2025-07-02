@@ -75,6 +75,21 @@ interface EditingPosition extends AssetPosition {
     newPrice: string;
 }
 
+// Helper types for API responses
+interface YahooQuote {
+    symbol: string;
+    shortname?: string;
+    longname?: string;
+    typeDisp?: string;
+    exchange: string;
+}
+
+interface MockPrice {
+    price: number;
+    change: number;
+    changePercent: number;
+}
+
 
 // Mock Data Loading Functions
 export const loadPortfolioData = async (): Promise<{
@@ -83,7 +98,7 @@ export const loadPortfolioData = async (): Promise<{
   chartData: ChartData[];
 }> => {
   await new Promise(resolve => setTimeout(resolve, 150));
-  
+
   const positions: AssetPosition[] = [
     { id: 1, ticker: 'AAPL', companyName: 'Apple Inc.', assetClass: 'equity', quantity: 150, currentPrice: 185.20, averageCost: 180.00, baseCurrency: 'USD' },
     { id: 2, ticker: 'MSFT', companyName: 'Microsoft Corp.', assetClass: 'equity', quantity: 100, currentPrice: 378.85, averageCost: 365.00, baseCurrency: 'USD' },
@@ -124,7 +139,7 @@ export const loadPortfolioData = async (): Promise<{
 
 export const fetchMarketInfo = async (): Promise<MarketInfo> => {
   await new Promise(resolve => setTimeout(resolve, 75));
-  
+
   return {
     lastRefresh: new Date().toISOString(),
     status: 'OPEN' as const,
@@ -192,7 +207,7 @@ export default function InvestmentPortfolioManager({
   const [currentMarketInfo, setCurrentMarketInfo] = useState<MarketInfo>(
     marketInfo || fallbackMarketInfo
   );
-  
+
   const [selectedTab, setSelectedTab] = useState(0);
   const [isDataRefreshing, setIsDataRefreshing] = useState(false);
   const [showTradeModal, setShowTradeModal] = useState(false);
@@ -207,12 +222,12 @@ export default function InvestmentPortfolioManager({
   const [priceUpdateInProgress, setPriceUpdateInProgress] = useState(false);
   const [lastSyncTime, setLastSyncTime] = useState(new Date().toISOString());
   const [initialLoading, setInitialLoading] = useState(!initialPositions && !preloaded);
-  
+
   // Touch gesture states
   const [swipeDistance, setSwipeDistance] = useState(0);
   const [isSwipeActive, setIsSwipeActive] = useState(false);
   const [swipeStartPos, setSwipeStartPos] = useState(0);
-  
+
   const [tradeFormData, setTradeFormData] = useState({
     action: 'buy',
     ticker: '',
@@ -256,10 +271,10 @@ export default function InvestmentPortfolioManager({
   useEffect(() => {
     const disableRefresh = (e: TouchEvent) => {
       if (e.touches.length > 1) return;
-      
+
       const touch = e.touches[0];
       const target = e.target as Element;
-      
+
       if (window.scrollY === 0 && 
           touch.clientY > swipeStartPos && 
           !target.closest('input, textarea, select')) {
@@ -275,9 +290,9 @@ export default function InvestmentPortfolioManager({
 
     document.addEventListener('touchstart', disableRefresh, { passive: false });
     document.addEventListener('touchmove', preventBrowserRefresh, { passive: false });
-    
+
     document.body.style.overscrollBehavior = 'none';
-    
+
     return () => {
       document.removeEventListener('touchstart', disableRefresh);
       document.removeEventListener('touchmove', preventBrowserRefresh);
@@ -291,7 +306,7 @@ export default function InvestmentPortfolioManager({
       setSwipeStartPos(e.touches[0].clientY);
       setIsSwipeActive(true);
     }
-    
+
     setGestureEnd(null);
     setGestureStart(e.targetTouches[0].clientX);
   };
@@ -300,13 +315,13 @@ export default function InvestmentPortfolioManager({
     if (isSwipeActive && window.scrollY === 0) {
       const currentY = e.touches[0].clientY;
       const distance = Math.max(0, currentY - swipeStartPos);
-      
+
       if (distance > 0) {
         setSwipeDistance(Math.min(distance * 0.5, 80));
         e.preventDefault();
       }
     }
-    
+
     setGestureEnd(e.targetTouches[0].clientX);
   };
 
@@ -315,12 +330,12 @@ export default function InvestmentPortfolioManager({
       if (swipeDistance > 50) {
         await refreshPortfolioData();
       }
-      
+
       setIsSwipeActive(false);
       setSwipeDistance(0);
       setSwipeStartPos(0);
     }
-    
+
     if (!gestureStart || !gestureEnd) return;
     const distance = gestureStart - gestureEnd;
     const isLeftSwipe = distance > 50;
@@ -347,7 +362,7 @@ export default function InvestmentPortfolioManager({
           setInitialLoading(false);
         }
       };
-      
+
       initializeData();
     }
   }, [initialPositions, preloaded]);
@@ -378,22 +393,22 @@ export default function InvestmentPortfolioManager({
 
   const searchAssets = async (searchTerm: string): Promise<SearchResult[]> => {
     if (!searchTerm || searchTerm.length < 2) return [];
-    
+
     try {
       const apiEndpoints = [
         `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(searchTerm)}&quotesCount=10&newsCount=0`,
       ];
-      
+
       const response = await fetch(apiEndpoints[0], {
         method: 'GET',
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         }
       });
-      
+
       if (response.ok) {
         const data = await response.json();
-        return data.quotes?.slice(0, 5).map((quote: any) => ({
+        return data.quotes?.slice(0, 5).map((quote: YahooQuote) => ({
           ticker: quote.symbol,
           name: quote.shortname || quote.longname,
           type: quote.typeDisp?.toLowerCase() || 'equity',
@@ -401,9 +416,9 @@ export default function InvestmentPortfolioManager({
         })) || [];
       }
     } catch (error) {
-      console.log('Yahoo Finance unavailable, using fallback');
+      console.log('Yahoo Finance unavailable, using fallback', error);
     }
-    
+
     const mockAssets: SearchResult[] = [
       { ticker: 'AAPL', name: 'Apple Inc.', type: 'equity', exchange: 'NASDAQ' },
       { ticker: 'MSFT', name: 'Microsoft Corporation', type: 'equity', exchange: 'NASDAQ' },
@@ -421,7 +436,7 @@ export default function InvestmentPortfolioManager({
       { ticker: 'BTC-USD', name: 'Bitcoin USD', type: 'cryptocurrency', exchange: 'CCC' },
       { ticker: 'ETH-USD', name: 'Ethereum USD', type: 'cryptocurrency', exchange: 'CCC' }
     ];
-    
+
     return mockAssets.filter(asset => 
       asset.ticker.toLowerCase().includes(searchTerm.toLowerCase()) ||
       asset.name.toLowerCase().includes(searchTerm.toLowerCase())
@@ -433,9 +448,9 @@ export default function InvestmentPortfolioManager({
       const apiEndpoints = [
         `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1m&range=1d`,
       ];
-      
+
       const response = await fetch(apiEndpoints[0]);
-      
+
       if (response.ok) {
         const data = await response.json();
         const chart = data.chart?.result?.[0];
@@ -445,7 +460,7 @@ export default function InvestmentPortfolioManager({
           const prevClose = metadata.previousClose;
           const priceChange = latestPrice - prevClose;
           const percentChange = (priceChange / prevClose) * 100;
-          
+
           return {
             symbol: symbol,
             price: latestPrice,
@@ -458,10 +473,10 @@ export default function InvestmentPortfolioManager({
         }
       }
     } catch (error) {
-      console.log('Price API unavailable, using mock pricing');
+      console.log('Price API unavailable, using mock pricing', error);
     }
-    
-    const mockPricing: Record<string, any> = {
+
+    const mockPricing: Record<string, MockPrice> = {
       'AAPL': { price: 185.20, change: 2.15, changePercent: 1.17 },
       'MSFT': { price: 378.85, change: -1.25, changePercent: -0.33 },
       'GOOGL': { price: 142.56, change: 0.85, changePercent: 0.60 },
@@ -478,13 +493,13 @@ export default function InvestmentPortfolioManager({
       'BTC-USD': { price: 67500.00, change: 1250.00, changePercent: 1.89 },
       'ETH-USD': { price: 3850.00, change: 125.50, changePercent: 3.37 }
     };
-    
+
     const mockData = mockPricing[symbol] || { 
       price: 100 + Math.random() * 200, 
       change: Math.random() * 10 - 5, 
       changePercent: Math.random() * 4 - 2 
     };
-    
+
     return {
       symbol: symbol,
       price: mockData.price,
@@ -500,14 +515,14 @@ export default function InvestmentPortfolioManager({
     if (searchDelayRef.current) {
       clearTimeout(searchDelayRef.current);
     }
-    
+
     if (!searchTerm || searchTerm.length < 2) {
       setSearchResults([]);
       return;
     }
-    
+
     setSearchInProgress(true);
-    
+
     searchDelayRef.current = setTimeout(async () => {
       try {
         const results = await searchAssets(searchTerm);
@@ -523,7 +538,7 @@ export default function InvestmentPortfolioManager({
 
   const retrieveAssetPrice = useCallback(async (symbol: string) => {
     if (!symbol) return null;
-    
+
     setPriceUpdateInProgress(true);
     try {
       const priceInfo = await fetchAssetPrice(symbol);
@@ -539,7 +554,7 @@ export default function InvestmentPortfolioManager({
   const selectAsset = async (asset: SearchResult) => {
     setChosenAsset(asset);
     setSearchResults([]);
-    
+
     if (showTradeModal) {
       setTradeFormData(prev => ({
         ...prev,
@@ -555,7 +570,7 @@ export default function InvestmentPortfolioManager({
         validationError: ''
       }));
     }
-    
+
     const priceInfo = await retrieveAssetPrice(asset.ticker);
     if (priceInfo) {
       if (showTradeModal) {
@@ -581,12 +596,12 @@ export default function InvestmentPortfolioManager({
       const valueInUSD = convertCurrency(position.quantity * position.currentPrice, position.baseCurrency);
       return sum + valueInUSD;
     }, 0);
-    
+
     const portfolioCost = portfolioPositions.reduce((sum, position) => {
       const costInUSD = convertCurrency(position.quantity * position.averageCost, position.baseCurrency);
       return sum + costInUSD;
     }, 0);
-    
+
     const unrealizedGain = portfolioValue - portfolioCost;
     const unrealizedGainPercent = portfolioCost === 0 ? 0 : (unrealizedGain / portfolioCost) * 100;
 
@@ -598,7 +613,7 @@ export default function InvestmentPortfolioManager({
       acc[position.assetClass].value += valueInUSD;
       acc[position.assetClass].count += 1;
       return acc;
-    }, {});
+    }, {} as Record<string, { value: number; count: number }>);
 
     const allocationData: AllocationData[] = Object.entries(assetAllocation).map(([assetType, data]) => {
       const typeLabels: Record<string, string> = {
@@ -613,7 +628,7 @@ export default function InvestmentPortfolioManager({
         cryptocurrency: '#F59E0B',
         cash: '#6B7280'
       };
-      
+
       return {
         category: typeLabels[assetType] || assetType,
         percentage: portfolioValue === 0 ? 0 : (data.value / portfolioValue) * 100,
@@ -639,7 +654,7 @@ export default function InvestmentPortfolioManager({
 
   const refreshPortfolioData = useCallback(async () => {
     setIsDataRefreshing(true);
-    
+
     try {
       const priceUpdates = await Promise.all(
         portfolioPositions
@@ -652,10 +667,10 @@ export default function InvestmentPortfolioManager({
             };
           })
       );
-      
+
       setPortfolioPositions(prev => prev.map(position => {
         if (position.assetClass === 'cash') return position;
-        
+
         const update = priceUpdates.find(u => u.id === position.id);
         return update ? { ...position, currentPrice: update.updatedPrice } : position;
       }));
@@ -663,7 +678,7 @@ export default function InvestmentPortfolioManager({
       const updatedMarketInfo = await fetchMarketInfo();
       setCurrentMarketInfo(updatedMarketInfo);
       setLastSyncTime(new Date().toISOString());
-      
+
     } catch (error) {
       console.error('Portfolio refresh failed:', error);
     } finally {
@@ -696,7 +711,7 @@ export default function InvestmentPortfolioManager({
 
   const processDeposit = () => {
     const { currency, amount } = depositFormData;
-    
+
     if (!amount || parseFloat(amount) <= 0) {
       setDepositFormData(prev => ({ ...prev, validationError: 'Please enter a valid amount' }));
       return;
@@ -704,9 +719,9 @@ export default function InvestmentPortfolioManager({
 
     const depositAmount = parseFloat(amount);
     const cashTicker = `${currency}-CASH`;
-    
+
     const existingCashIdx = portfolioPositions.findIndex(p => p.ticker === cashTicker);
-    
+
     if (existingCashIdx >= 0) {
       setPortfolioPositions(prev => prev.map((position, index) => 
         index === existingCashIdx 
@@ -744,7 +759,7 @@ export default function InvestmentPortfolioManager({
 
   const processNewAsset = () => {
     const { ticker, name, type, quantity, price, date, currency } = newAssetFormData;
-    
+
     if (!ticker || !name || !quantity || !price) {
       setNewAssetFormData(prev => ({ ...prev, validationError: 'All fields are required' }));
       return;
@@ -752,7 +767,7 @@ export default function InvestmentPortfolioManager({
 
     const shareCount = parseFloat(quantity);
     const priceValue = parseFloat(price);
-    
+
     if (shareCount <= 0 || priceValue <= 0) {
       setNewAssetFormData(prev => ({ ...prev, validationError: 'Quantity and price must be positive' }));
       return;
@@ -810,7 +825,7 @@ export default function InvestmentPortfolioManager({
 
   const executeTrade = () => {
     const { action, ticker, quantity, price } = tradeFormData;
-    
+
     if (!ticker || !quantity || !price) {
       setTradeFormData(prev => ({ ...prev, validationError: 'All fields are required' }));
       return;
@@ -818,7 +833,7 @@ export default function InvestmentPortfolioManager({
 
     const shareCount = parseFloat(quantity);
     const priceValue = parseFloat(price);
-    
+
     if (shareCount <= 0 || priceValue <= 0) {
       setTradeFormData(prev => ({ ...prev, validationError: 'Quantity and price must be positive' }));
       return;
@@ -861,20 +876,20 @@ export default function InvestmentPortfolioManager({
     setPortfolioPositions(prev => {
       const existingIdx = prev.findIndex(p => p.ticker.toLowerCase() === ticker.toLowerCase());
       let updatedPositions = [...prev];
-      
+
       if (existingIdx >= 0) {
         const existing = prev[existingIdx];
         const newQuantity = action === 'buy' 
           ? existing.quantity + shareCount 
           : existing.quantity - shareCount;
-        
+
         if (newQuantity <= 0) {
           updatedPositions = prev.filter((_, index) => index !== existingIdx);
         } else {
           const newAvgCost = action === 'buy' 
             ? ((existing.quantity * existing.averageCost) + (shareCount * priceValue)) / newQuantity
             : existing.averageCost;
-          
+
           updatedPositions = prev.map((position, index) => 
             index === existingIdx 
               ? { ...position, quantity: newQuantity, averageCost: newAvgCost, currentPrice: priceValue }
@@ -899,7 +914,7 @@ export default function InvestmentPortfolioManager({
       if (action === 'buy') {
         const transactionCost = shareCount * priceValue;
         const usdCashIdx = updatedPositions.findIndex(p => p.ticker === 'USD-CASH');
-        
+
         if (usdCashIdx >= 0) {
           updatedPositions[usdCashIdx] = {
             ...updatedPositions[usdCashIdx],
@@ -909,7 +924,7 @@ export default function InvestmentPortfolioManager({
       } else if (action === 'sell') {
         const saleProceeds = shareCount * priceValue;
         const usdCashIdx = updatedPositions.findIndex(p => p.ticker === 'USD-CASH');
-        
+
         if (usdCashIdx >= 0) {
           updatedPositions[usdCashIdx] = {
             ...updatedPositions[usdCashIdx],
@@ -928,7 +943,7 @@ export default function InvestmentPortfolioManager({
           });
         }
       }
-      
+
       return updatedPositions;
     });
 
@@ -941,21 +956,21 @@ export default function InvestmentPortfolioManager({
 
   const validateSellQuantity = (quantity: string, ticker: string) => {
     if (!quantity || !ticker) return '';
-    
+
     const shareCount = parseFloat(quantity);
     if (isNaN(shareCount) || shareCount <= 0) return '';
-    
+
     const existingPosition = portfolioPositions.find(p => p.ticker.toLowerCase() === ticker.toLowerCase());
     if (!existingPosition) return 'You do not own this asset';
-    
+
     if (existingPosition.quantity < shareCount) {
       return `You only own ${existingPosition.quantity} shares (trying to sell ${shareCount})`;
     }
-    
+
     if (existingPosition.quantity === shareCount) {
       return 'This will sell all your shares in this asset';
     }
-    
+
     return `You will have ${(existingPosition.quantity - shareCount).toFixed(2)} shares remaining`;
   };
 
@@ -973,7 +988,7 @@ export default function InvestmentPortfolioManager({
     const { id, newQuantity, newPrice } = editingPosition;
     const quantity = parseFloat(newQuantity);
     const price = parseFloat(newPrice);
-    
+
     if (quantity <= 0 || price <= 0) return;
 
     setPortfolioPositions(prev => prev.map(position => 
@@ -981,7 +996,7 @@ export default function InvestmentPortfolioManager({
         ? { ...position, quantity, currentPrice: price }
         : position
     ));
-    
+
     setEditingPosition(null);
   };
 
@@ -1033,7 +1048,7 @@ export default function InvestmentPortfolioManager({
           </div>
         )}
       </div>
-      
+
       {searchResults.length > 0 && (
         <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-60 overflow-y-auto">
           {searchResults.map((asset, index) => (
@@ -1110,7 +1125,7 @@ export default function InvestmentPortfolioManager({
             {unrealizedGain >= 0 ? '+' : ''}${unrealizedGain.toLocaleString()} ({unrealizedGainPercent.toFixed(2)}%)
           </span>
         </div>
-        
+
         <div className="mt-4 p-4 bg-gray-50 rounded-xl">
           <div className="flex items-center justify-between">
             <div className="text-left">
@@ -1178,7 +1193,7 @@ export default function InvestmentPortfolioManager({
                     const typeMapping: Record<string, string> = { equity: 'Equities', bond: 'Bonds', cryptocurrency: 'Cryptocurrency', cash: 'Cash' };
                     return typeMapping[p.assetClass] === name;
                   }).length;
-                  
+
                   return [
                     <div key="tooltip" className="text-left">
                       <div className="font-semibold">{name}</div>
@@ -1399,7 +1414,7 @@ export default function InvestmentPortfolioManager({
                   </p>
                 </div>
               </div>
-              
+
               {position.assetClass !== 'cash' && (
                 <div className="flex space-x-2">
                   <button
@@ -1522,7 +1537,7 @@ export default function InvestmentPortfolioManager({
             <FiRefreshCw className="w-5 h-5 text-gray-600" />
           </button>
         </div>
-        
+
         <div className="flex overflow-x-auto scrollbar-hide">
           {navigationTabs.map((tab, index) => (
             <button
@@ -1554,7 +1569,7 @@ export default function InvestmentPortfolioManager({
             <span className="text-blue-600">Updating prices...</span>
           </div>
         )}
-        
+
         {detailViewActive && (
           <div 
             className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
@@ -1569,21 +1584,21 @@ export default function InvestmentPortfolioManager({
                   <FiX className="w-5 h-5" />
                 </button>
               </div>
-              
+
               {detailViewActive === 'pie' ? (
                 <div className="space-y-4">
                   <div className="text-center p-4 bg-gray-50 rounded-lg">
                     <p className="text-2xl font-bold text-gray-900">${portfolioValue.toLocaleString()}</p>
                     <p className="text-gray-600">Total Portfolio Value</p>
                   </div>
-                  
+
                   <div className="space-y-3">
                     {allocationData.map((asset, index) => {
                       const holdingsCount = portfolioPositions.filter(p => {
                         const typeMapping: Record<string, string> = { equity: 'Equities', bond: 'Bonds', cryptocurrency: 'Cryptocurrency', cash: 'Cash' };
                         return typeMapping[p.assetClass] === asset.category;
                       }).length;
-                      
+
                       const avgGain = portfolioPositions
                         .filter(p => {
                           const typeMapping: Record<string, string> = { equity: 'Equities', bond: 'Bonds', cryptocurrency: 'Cryptocurrency', cash: 'Cash' };
@@ -1634,7 +1649,7 @@ export default function InvestmentPortfolioManager({
                       <p className="text-sm text-yellow-700">NASDAQ</p>
                     </div>
                   </div>
-                  
+
                   <div className="space-y-2">
                     <div className="flex justify-between">
                       <span className="text-gray-600">Outperformance vs S&P 500:</span>
@@ -1707,7 +1722,7 @@ export default function InvestmentPortfolioManager({
                 <FiX className="w-5 h-5" />
               </button>
             </div>
-            
+
             <div className="space-y-4">
               {tradeFormData.validationError && (
                 <div className="bg-red-50 border border-red-200 rounded-lg p-3">
@@ -1772,7 +1787,7 @@ export default function InvestmentPortfolioManager({
                   </p>
                 </div>
               )}
-              
+
               {!selectedAction && (
                 <div className="grid grid-cols-2 gap-4">
                   <button 
@@ -1797,7 +1812,7 @@ export default function InvestmentPortfolioManager({
                   </button>
                 </div>
               )}
-              
+
               {!selectedAction && (
                 <AssetSearchField
                   value={tradeFormData.ticker}
@@ -1806,7 +1821,7 @@ export default function InvestmentPortfolioManager({
                   onSelect={selectAsset}
                 />
               )}
-              
+
               <input
                 type="number"
                 value={tradeFormData.quantity}
@@ -1814,7 +1829,7 @@ export default function InvestmentPortfolioManager({
                 placeholder="Number of shares"
                 className="w-full p-4 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
               />
-              
+
               <input
                 type="number"
                 value={tradeFormData.price}
@@ -1830,7 +1845,7 @@ export default function InvestmentPortfolioManager({
                   </p>
                 </div>
               )}
-              
+
               <button 
                 onClick={executeTrade}
                 className="w-full bg-blue-600 text-white p-4 rounded-xl font-medium hover:bg-blue-700 transition-colors"
@@ -1858,14 +1873,14 @@ export default function InvestmentPortfolioManager({
                 <FiX className="w-5 h-5" />
               </button>
             </div>
-            
+
             <div className="space-y-4">
               {depositFormData.validationError && (
                 <div className="bg-red-50 border border-red-200 rounded-lg p-3">
                   <p className="text-red-700 text-sm">{depositFormData.validationError}</p>
                 </div>
               )}
-              
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Currency</label>
                 <select
@@ -1879,7 +1894,7 @@ export default function InvestmentPortfolioManager({
                   <option value="RUB">RUB - Russian Ruble</option>
                 </select>
               </div>
-              
+
               <input
                 type="number"
                 value={depositFormData.amount}
@@ -1887,7 +1902,7 @@ export default function InvestmentPortfolioManager({
                 placeholder="Amount"
                 className="w-full p-4 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
               />
-              
+
               <button 
                 onClick={processDeposit}
                 className="w-full bg-green-600 text-white p-4 rounded-xl font-medium hover:bg-green-700 transition-colors"
@@ -1926,7 +1941,7 @@ export default function InvestmentPortfolioManager({
                 <FiX className="w-5 h-5" />
               </button>
             </div>
-            
+
             <div className="space-y-4">
               {newAssetFormData.validationError && (
                 <div className="bg-red-50 border border-red-200 rounded-lg p-3">
@@ -1942,7 +1957,7 @@ export default function InvestmentPortfolioManager({
                   </p>
                 </div>
               )}
-              
+
               <div className="grid grid-cols-2 gap-4">
                 <AssetSearchField
                   value={newAssetFormData.ticker}
@@ -1960,7 +1975,7 @@ export default function InvestmentPortfolioManager({
                   <option value="cryptocurrency">Cryptocurrency</option>
                 </select>
               </div>
-              
+
               <input
                 type="text"
                 value={newAssetFormData.name}
@@ -1968,7 +1983,7 @@ export default function InvestmentPortfolioManager({
                 placeholder="Asset name"
                 className="w-full p-4 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
               />
-              
+
               <div className="grid grid-cols-2 gap-4">
                 <input
                   type="number"
@@ -1985,7 +2000,7 @@ export default function InvestmentPortfolioManager({
                   className="p-4 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
                 />
               </div>
-              
+
               <div className="grid grid-cols-2 gap-4">
                 <input
                   type="date"
@@ -2004,7 +2019,7 @@ export default function InvestmentPortfolioManager({
                   <option value="RUB">RUB</option>
                 </select>
               </div>
-              
+
               <button 
                 onClick={processNewAsset}
                 className="w-full bg-purple-600 text-white p-4 rounded-xl font-medium hover:bg-purple-700 transition-colors"
