@@ -6,6 +6,7 @@ import { BiTrendingUp, BiTrendingDown } from 'react-icons/bi';
 import { FaDollarSign, FaChartBar, FaWallet } from 'react-icons/fa';
 import { FiRefreshCw, FiEdit3, FiTrash2, FiActivity, FiSave, FiX, FiShoppingCart, FiPlusCircle, FiSearch } from 'react-icons/fi';
 
+// Interfaces
 interface AssetPosition {
   id: number;
   ticker: string;
@@ -34,10 +35,52 @@ interface AllocationData {
   themeColor: string;
 }
 
+interface ChartData {
+  period: string;
+  portfolio: number;
+  sp500: number;
+  nasdaq: number;
+}
+
+interface MarketIndex {
+    value: number;
+    change: number;
+    changePercent: number;
+}
+
+interface MarketInfo {
+    lastRefresh: string;
+    status: 'OPEN' | 'CLOSED';
+    marketIndices: {
+        sp500: MarketIndex;
+        nasdaq: MarketIndex;
+        dow: MarketIndex;
+    };
+}
+
+interface SearchResult {
+    ticker: string;
+    name: string;
+    type: string;
+    exchange: string;
+}
+
+interface SelectedAction {
+    position: AssetPosition;
+    actionType: string;
+}
+
+interface EditingPosition extends AssetPosition {
+    newQuantity: string;
+    newPrice: string;
+}
+
+
+// Mock Data Loading Functions
 export const loadPortfolioData = async (): Promise<{
   positions: AssetPosition[];
   tradeHistory: TradeRecord[];
-  chartData: any[];
+  chartData: ChartData[];
 }> => {
   await new Promise(resolve => setTimeout(resolve, 150));
   
@@ -63,7 +106,7 @@ export const loadPortfolioData = async (): Promise<{
     { id: 3, tradeType: 'deposit', ticker: 'USD-CASH', quantity: 15000, executionPrice: 1.00, tradeDate: '2024-01-01', tradeValue: 15000 },
   ];
 
-  const chartData = [
+  const chartData: ChartData[] = [
     { period: 'Jan', portfolio: 100, sp500: 100, nasdaq: 100 },
     { period: 'Feb', portfolio: 105, sp500: 103, nasdaq: 106 },
     { period: 'Mar', portfolio: 98, sp500: 97, nasdaq: 95 },
@@ -79,7 +122,7 @@ export const loadPortfolioData = async (): Promise<{
   };
 };
 
-export const fetchMarketInfo = async () => {
+export const fetchMarketInfo = async (): Promise<MarketInfo> => {
   await new Promise(resolve => setTimeout(resolve, 75));
   
   return {
@@ -93,6 +136,7 @@ export const fetchMarketInfo = async () => {
   };
 };
 
+// Fallback Data
 const fallbackData = {
   positions: [
     { id: 1, ticker: 'AAPL', companyName: 'Apple Inc.', assetClass: 'equity' as const, quantity: 150, currentPrice: 185.20, averageCost: 180.00, baseCurrency: 'USD' },
@@ -112,7 +156,7 @@ const fallbackData = {
   ]
 };
 
-const fallbackMarketInfo = {
+const fallbackMarketInfo: MarketInfo = {
   lastRefresh: new Date().toISOString(),
   status: 'OPEN' as const,
   marketIndices: {
@@ -122,6 +166,7 @@ const fallbackMarketInfo = {
   }
 };
 
+// Component
 export default function InvestmentPortfolioManager({ 
   initialPositions, 
   initialTrades, 
@@ -131,8 +176,8 @@ export default function InvestmentPortfolioManager({
 }: {
   initialPositions?: AssetPosition[];
   initialTrades?: TradeRecord[];
-  performanceMetrics?: any[];
-  marketInfo?: any;
+  performanceMetrics?: ChartData[];
+  marketInfo?: MarketInfo;
   preloaded?: boolean;
 } = {}) {
   const [portfolioPositions, setPortfolioPositions] = useState<AssetPosition[]>(
@@ -141,10 +186,10 @@ export default function InvestmentPortfolioManager({
   const [transactionLog, setTransactionLog] = useState<TradeRecord[]>(
     initialTrades || fallbackData.tradeHistory
   );
-  const [performanceChartData] = useState(
+  const [performanceChartData] = useState<ChartData[]>(
     performanceMetrics || fallbackData.chartData
   );
-  const [currentMarketInfo, setCurrentMarketInfo] = useState(
+  const [currentMarketInfo, setCurrentMarketInfo] = useState<MarketInfo>(
     marketInfo || fallbackMarketInfo
   );
   
@@ -153,12 +198,12 @@ export default function InvestmentPortfolioManager({
   const [showTradeModal, setShowTradeModal] = useState(false);
   const [showDepositModal, setShowDepositModal] = useState(false);
   const [showNewAssetModal, setShowNewAssetModal] = useState(false);
-  const [selectedAction, setSelectedAction] = useState<any>(null);
+  const [selectedAction, setSelectedAction] = useState<SelectedAction | null>(null);
   const [detailViewActive, setDetailViewActive] = useState<string | null>(null);
-  const [editingPosition, setEditingPosition] = useState<any>(null);
-  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [editingPosition, setEditingPosition] = useState<EditingPosition | null>(null);
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [searchInProgress, setSearchInProgress] = useState(false);
-  const [chosenAsset, setChosenAsset] = useState<any>(null);
+  const [chosenAsset, setChosenAsset] = useState<SearchResult | null>(null);
   const [priceUpdateInProgress, setPriceUpdateInProgress] = useState(false);
   const [lastSyncTime, setLastSyncTime] = useState(new Date().toISOString());
   const [initialLoading, setInitialLoading] = useState(!initialPositions && !preloaded);
@@ -196,12 +241,11 @@ export default function InvestmentPortfolioManager({
   const [gestureStart, setGestureStart] = useState<number | null>(null);
   const [gestureEnd, setGestureEnd] = useState<number | null>(null);
   const mainContainerRef = useRef<HTMLDivElement>(null);
-  const refreshDisplayRef = useRef<HTMLDivElement>(null);
   const searchDelayRef = useRef<NodeJS.Timeout | null>(null);
 
   const navigationTabs = ['Dashboard', 'Allocation', 'Assets', 'History'];
 
-  const currencyRates = {
+  const currencyRates: Record<string, number> = {
     USD: 1.00,
     EUR: 1.09,
     PLN: 0.25,
@@ -332,7 +376,7 @@ export default function InvestmentPortfolioManager({
     return () => clearInterval(interval);
   }, []);
 
-  const searchAssets = async (searchTerm: string) => {
+  const searchAssets = async (searchTerm: string): Promise<SearchResult[]> => {
     if (!searchTerm || searchTerm.length < 2) return [];
     
     try {
@@ -360,7 +404,7 @@ export default function InvestmentPortfolioManager({
       console.log('Yahoo Finance unavailable, using fallback');
     }
     
-    const mockAssets = [
+    const mockAssets: SearchResult[] = [
       { ticker: 'AAPL', name: 'Apple Inc.', type: 'equity', exchange: 'NASDAQ' },
       { ticker: 'MSFT', name: 'Microsoft Corporation', type: 'equity', exchange: 'NASDAQ' },
       { ticker: 'GOOGL', name: 'Alphabet Inc.', type: 'equity', exchange: 'NASDAQ' },
@@ -478,7 +522,7 @@ export default function InvestmentPortfolioManager({
   }, []);
 
   const retrieveAssetPrice = useCallback(async (symbol: string) => {
-    if (!symbol) return;
+    if (!symbol) return null;
     
     setPriceUpdateInProgress(true);
     try {
@@ -492,7 +536,7 @@ export default function InvestmentPortfolioManager({
     }
   }, []);
 
-  const selectAsset = async (asset: any) => {
+  const selectAsset = async (asset: SearchResult) => {
     setChosenAsset(asset);
     setSearchResults([]);
     
@@ -544,9 +588,9 @@ export default function InvestmentPortfolioManager({
     }, 0);
     
     const unrealizedGain = portfolioValue - portfolioCost;
-    const unrealizedGainPercent = ((unrealizedGain / portfolioCost) * 100) || 0;
+    const unrealizedGainPercent = portfolioCost === 0 ? 0 : (unrealizedGain / portfolioCost) * 100;
 
-    const assetAllocation = portfolioPositions.reduce((acc: Record<string, { value: number; count: number }>, position) => {
+    const assetAllocation: Record<string, { value: number; count: number }> = portfolioPositions.reduce((acc, position) => {
       const valueInUSD = convertCurrency(position.quantity * position.currentPrice, position.baseCurrency);
       if (!acc[position.assetClass]) {
         acc[position.assetClass] = { value: 0, count: 0 };
@@ -572,16 +616,16 @@ export default function InvestmentPortfolioManager({
       
       return {
         category: typeLabels[assetType] || assetType,
-        percentage: ((data.value / portfolioValue) * 100) || 0,
+        percentage: portfolioValue === 0 ? 0 : (data.value / portfolioValue) * 100,
         marketValue: data.value,
         themeColor: typeColors[assetType] || '#6B7280'
       };
     });
 
-    return { portfolioValue, portfolioCost, unrealizedGain, unrealizedGainPercent, allocationData };
+    return { portfolioValue, unrealizedGain, unrealizedGainPercent, allocationData };
   };
 
-  const { portfolioValue, portfolioCost, unrealizedGain, unrealizedGainPercent, allocationData } = calculateMetrics();
+  const { portfolioValue, unrealizedGain, unrealizedGainPercent, allocationData } = calculateMetrics();
 
   const LoadingScreen = () => (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -924,6 +968,8 @@ export default function InvestmentPortfolioManager({
   };
 
   const savePositionEdit = () => {
+      if (!editingPosition) return;
+
     const { id, newQuantity, newPrice } = editingPosition;
     const quantity = parseFloat(newQuantity);
     const price = parseFloat(newPrice);
@@ -944,7 +990,7 @@ export default function InvestmentPortfolioManager({
   };
 
   const MetricCard = ({ icon: Icon, title, value, change, changePercent }: {
-    icon: any;
+    icon: React.ElementType;
     title: string;
     value: string;
     change: number;
@@ -966,7 +1012,7 @@ export default function InvestmentPortfolioManager({
     value: string;
     onChange: (value: string) => void;
     placeholder: string;
-    onSelect: (asset: any) => void;
+    onSelect: (asset: SearchResult) => void;
   }) => (
     <div className="relative">
       <div className="relative">
@@ -1126,10 +1172,10 @@ export default function InvestmentPortfolioManager({
                 ))}
               </Pie>
               <Tooltip 
-                formatter={(value, name, props) => {
+                formatter={(value, name) => {
                   const assetType = allocationData.find(item => item.category === name);
                   const holdingsCount = portfolioPositions.filter(p => {
-                    const typeMapping = { equity: 'Equities', bond: 'Bonds', cryptocurrency: 'Cryptocurrency', cash: 'Cash' };
+                    const typeMapping: Record<string, string> = { equity: 'Equities', bond: 'Bonds', cryptocurrency: 'Cryptocurrency', cash: 'Cash' };
                     return typeMapping[p.assetClass] === name;
                   }).length;
                   
@@ -1139,7 +1185,8 @@ export default function InvestmentPortfolioManager({
                       <div>${assetType?.marketValue.toLocaleString()}</div>
                       <div>{(value as number).toFixed(1)}% of portfolio</div>
                       <div className="text-sm text-gray-600">{holdingsCount} {holdingsCount === 1 ? 'asset' : 'assets'}</div>
-                    </div>
+                    </div>,
+                      name
                   ];
                 }}
                 labelFormatter={() => ''}
@@ -1292,14 +1339,14 @@ export default function InvestmentPortfolioManager({
                 <input
                   type="number"
                   value={editingPosition.newQuantity}
-                  onChange={(e) => setEditingPosition(prev => ({ ...prev, newQuantity: e.target.value }))}
+                  onChange={(e) => setEditingPosition(prev => ({ ...prev!, newQuantity: e.target.value }))}
                   className="p-2 border rounded text-sm"
                   placeholder="Quantity"
                 />
                 <input
                   type="number"
                   value={editingPosition.newPrice}
-                  onChange={(e) => setEditingPosition(prev => ({ ...prev, newPrice: e.target.value }))}
+                  onChange={(e) => setEditingPosition(prev => ({ ...prev!, newPrice: e.target.value }))}
                   className="p-2 border rounded text-sm"
                   placeholder="Price"
                 />
@@ -1533,17 +1580,17 @@ export default function InvestmentPortfolioManager({
                   <div className="space-y-3">
                     {allocationData.map((asset, index) => {
                       const holdingsCount = portfolioPositions.filter(p => {
-                        const typeMapping = { equity: 'Equities', bond: 'Bonds', cryptocurrency: 'Cryptocurrency', cash: 'Cash' };
+                        const typeMapping: Record<string, string> = { equity: 'Equities', bond: 'Bonds', cryptocurrency: 'Cryptocurrency', cash: 'Cash' };
                         return typeMapping[p.assetClass] === asset.category;
                       }).length;
                       
                       const avgGain = portfolioPositions
                         .filter(p => {
-                          const typeMapping = { equity: 'Equities', bond: 'Bonds', cryptocurrency: 'Cryptocurrency', cash: 'Cash' };
+                          const typeMapping: Record<string, string> = { equity: 'Equities', bond: 'Bonds', cryptocurrency: 'Cryptocurrency', cash: 'Cash' };
                           return typeMapping[p.assetClass] === asset.category;
                         })
                         .reduce((acc, p) => {
-                          const gain = ((p.currentPrice - p.averageCost) / p.averageCost) * 100;
+                          const gain = p.averageCost === 0 ? 0 : ((p.currentPrice - p.averageCost) / p.averageCost) * 100;
                           return acc + (isNaN(gain) ? 0 : gain);
                         }, 0) / Math.max(holdingsCount, 1);
 
